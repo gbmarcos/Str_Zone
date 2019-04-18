@@ -183,6 +183,7 @@ private:
     int ApHome(cv::Mat img);
     int alineado( std::vector<cv::Point> con,cv::Mat img);
     cv::Rect compressROI(cv::Mat frm, cv::Rect boundingBox, int padding);
+    cv::Rect FindStrikeZone(cv::Mat _image);
     void restablecerVideo();
     Mat filter_image(Mat& img);
 

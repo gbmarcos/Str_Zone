@@ -19,6 +19,7 @@ MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
+    this->setWindowFlags(Qt::WindowStaysOnTopHint);
     ui->setupUi(this);
     ui->cantpix->setValidator(new QIntValidator(this));
     ui->Tx->setValidator(new QIntValidator(this));
@@ -1162,23 +1163,38 @@ void MainWindow::bordes(int x, int y){
 
 void MainWindow::on_pushButton_43_clicked()
 {
-    QMessageBox msg;
-    if(image.empty()){
-        msg.setText("Necesitas Cargar una Imagen")    ;
-        msg.exec();
+
+    if(image.empty()){       
         return;
     }
     cv::Mat resultado=image.clone();
+    cv::Rect StrikeZone=FindStrikeZone(image.clone());//Este metodo retorna un rectangulo delimitando la zona de strike.
+   //dibujar zona de strike a partir del resultado.
+    cv::Mat Reg= resultado(StrikeZone);
+   for(int i=0;i<Reg.rows;i++)
+   {
+       for(int j=0;j<Reg.cols;j++)
+       {
+
+           if((Reg.at<cv::Vec3b>(i,j)[1]+80)>255)Reg.at<cv::Vec3b>(i,j)[1]=255;
+          else Reg.at<cv::Vec3b>(i,j)[1]+=80;
 
 
+       }
+   }
+    cv::rectangle(resultado,StrikeZone,cv::Scalar(0,255,0));
 
+    cv::namedWindow("Resultado");
+    cv::imshow("Resultado",resultado);
+}
 
+cv::Rect MainWindow::FindStrikeZone(cv::Mat _image)
+{
 
-
-    int Uphome= ApHome(image); //estimar la pocision del home
-    cv::Mat imageRIO= image(cv::Rect(image.cols/3,Uphome,image.cols/3,30));
+    int Uphome= ApHome(_image); //estimar la pocision del home
+    cv::Mat imageRIO= _image(cv::Rect(_image.cols/3,Uphome,_image.cols/3,30));
     int thr=OptimalHomeThres(imageRIO);//buscar un umbral optimo para detectar la pocision y dimensiones del HP
-    int ajusteX=image.cols/3;
+    int ajusteX=_image.cols/3;
     int ajusteY=Uphome;
 
 
@@ -1186,80 +1202,49 @@ void MainWindow::on_pushButton_43_clicked()
     std::vector<int> limitesHome= Home_Limit(imageRIO,thr); //deteccion de las dimenciones del HP {limite izquierdo del HP;limite derecho del HP;limite inferior del HP}
 
 
-    // dibujar los limites laterales del HP en la imagen
-    cv::line(image,cv::Point(limitesHome[0]+ajusteX,0),cv::Point(limitesHome[0]+ajusteX,limitesHome[2]+ajusteY),cv::Scalar(0,255,0),2);
-    cv::line(image,cv::Point(limitesHome[1]+ajusteX,0),cv::Point(limitesHome[1]+ajusteX,limitesHome[2]+ajusteY),cv::Scalar(0,255,0),2);
 
     //ubicar los cajones de bateo y regiones de interés segun las dimensiones estipuladas
-
     int homeW=limitesHome[1]-limitesHome[0];
     int homeH=limitesHome[2]-limitesHome[3];
     int baterBoxW=round(homeW*2.700);
     int baterBoxH=round(homeW*4.631);
     int distHBB=round(homeW*0.234);
     int H_cintura= round(baterBoxH/6);
-
-
+    //buscar la altura de la rodilla, el suelo , la cintura y el cuello para construir la zona de strike
     cv::Rect cint_Izq(limitesHome[0]+ajusteX-distHBB-baterBoxW,limitesHome[2]+ajusteY-3*(baterBoxH)/6,baterBoxW,H_cintura*3);
     cv::Rect cint_Der(limitesHome[1]+ajusteX+distHBB,limitesHome[2]+ajusteY-3*(baterBoxH)/6,baterBoxW,H_cintura*3);
-
-
     std::vector<int> bat_pos=BaterDim(cint_Izq,cint_Der);
-
-
-    if(bat_pos[0]==0) cv::rectangle(image,cv::Rect(limitesHome[0]+ajusteX-distHBB-baterBoxW,limitesHome[2]+ajusteY-baterBoxH,baterBoxW,baterBoxH),cv::Scalar(0,255,0));
-    else cv::rectangle(image,cv::Rect(limitesHome[1]+ajusteX+distHBB,limitesHome[2]+ajusteY-baterBoxH,baterBoxW,baterBoxH),cv::Scalar(0,255,0));
-
-
     int cintura=cint_Der.y+bat_pos[1];
-
-    cv::line(image,cv::Point(0,cintura),cv::Point(image.cols-1,cintura),cv::Scalar(0,0,255),1);//dibujar aproximacion a la cintura
-
     int suelo=(limitesHome[2]+ajusteY-(homeH*2));
-    cv::line(image,cv::Point(0,suelo),cv::Point(image.cols-1,suelo),cv::Scalar(0,0,255),1);//dibujar aproximacion a la cintura
-
     int altRod= (suelo-cintura)/2;
     int ajusteRod=altRod/25;
-
     int posRod= suelo-altRod-ajusteRod;
-    cv::line(image,cv::Point(0,posRod),cv::Point(image.cols-1,posRod),cv::Scalar(0,255,0),1);// dibujar limite inferior de la zona de strike
-
     int altCuello=(5*(altRod/4))+(suelo-cintura);
-
     int posCuello=suelo-altCuello;
-    cv::line(image,cv::Point(0,posCuello),cv::Point(image.cols-1,posCuello),cv::Scalar(0,0,255),1);//dibujar aproximacion a la cintura
-
     int SZSuplim = cintura-(cintura-posCuello)/2;
-    cv::line(image,cv::Point(0,SZSuplim),cv::Point(image.cols-1,SZSuplim),cv::Scalar(0,255,0),1);// dibujar limite superior de la zona de strike
 
+//---esta region no es parte del algoritmo. Es para monitorizar el funcionamiento
+
+    // dibujar los limites laterales del Home en la imagen. no es parte del algoritmo.
+    cv::line(_image,cv::Point(limitesHome[0]+ajusteX,0),cv::Point(limitesHome[0]+ajusteX,limitesHome[2]+ajusteY),cv::Scalar(0,255,0),2);
+    cv::line(_image,cv::Point(limitesHome[1]+ajusteX,0),cv::Point(limitesHome[1]+ajusteX,limitesHome[2]+ajusteY),cv::Scalar(0,255,0),2);
+
+    if(bat_pos[0]==0) cv::rectangle(_image,cv::Rect(limitesHome[0]+ajusteX-distHBB-baterBoxW,limitesHome[2]+ajusteY-baterBoxH,baterBoxW,baterBoxH),cv::Scalar(0,255,0));
+    else cv::rectangle(_image,cv::Rect(limitesHome[1]+ajusteX+distHBB,limitesHome[2]+ajusteY-baterBoxH,baterBoxW,baterBoxH),cv::Scalar(0,255,0));
+    cv::line(_image,cv::Point(0,cintura),cv::Point(_image.cols-1,cintura),cv::Scalar(0,0,255),1);//dibujar aproximacion a la cintura
+    cv::line(_image,cv::Point(0,suelo),cv::Point(_image.cols-1,suelo),cv::Scalar(0,0,255),1);//dibujar aproximacion a la cintura
+    cv::line(_image,cv::Point(0,posRod),cv::Point(_image.cols-1,posRod),cv::Scalar(0,255,0),1);// dibujar limite inferior de la zona de strike
+    cv::line(_image,cv::Point(0,posCuello),cv::Point(_image.cols-1,posCuello),cv::Scalar(0,0,255),1);//dibujar aproximacion a la cintura
+    cv::line(_image,cv::Point(0,SZSuplim),cv::Point(_image.cols-1,SZSuplim),cv::Scalar(0,255,0),1);// dibujar limite superior de la zona de strike
     cv::namedWindow("pasos");
-    cv::imshow("pasos",image);
-    int SZWidth=(limitesHome[1]+ajusteX)-(limitesHome[0]+ajusteX);
+    cv::imshow("pasos",_image);
 
+//---fin de la region
+
+    int SZWidth=(limitesHome[1]+ajusteX)-(limitesHome[0]+ajusteX);
     int SZHeigth=posRod-SZSuplim;
     cv::Rect StrikeZone(limitesHome[0]+ajusteX,SZSuplim,SZWidth,SZHeigth);
-
-    cv::Mat Reg= resultado(StrikeZone);
-   for(int i=0;i<Reg.rows;i++)
-   {
-       for(int j=0;j<Reg.cols;j++)
-       {
-           if((Reg.at<cv::Vec3b>(i,j)[0]+50)>255)Reg.at<cv::Vec3b>(i,j)[0]=255;
-           else Reg.at<cv::Vec3b>(i,j)[0]+=50;
-           if((Reg.at<cv::Vec3b>(i,j)[1]+50)>255)Reg.at<cv::Vec3b>(i,j)[1]=255;
-           else Reg.at<cv::Vec3b>(i,j)[1]+=50;
-           if((Reg.at<cv::Vec3b>(i,j)[2]+50)>255)Reg.at<cv::Vec3b>(i,j)[2]=255;
-           else Reg.at<cv::Vec3b>(i,j)[2]+=50;
-
-       }
-   }
-
-
-
-    cv::rectangle(resultado,StrikeZone,cv::Scalar(255,255,255));
-
-    cv::namedWindow("Resultado");
-    cv::imshow("Resultado",resultado);
+    return StrikeZone;
 }
 
 std::vector<cv::Vec2f> MainWindow::lineas_diamante(cv::Mat img)
@@ -1332,13 +1317,18 @@ std::vector<cv::Point> bater= cant_PN_I<cant_PN_D?findBater(I):findBater(D);
 int cint=cintura(bater,I.rows/3,dim[0]);
 dim.push_back(cint);
 
+//
+// esta region no es parte del algoritmo
+//
 cv::line(I,cv::Point(0,cint),cv::Point(I.cols-1,cint),cv::Scalar(0,255,0),1);
 cv::line(D,cv::Point(0,cint),cv::Point(I.cols-1,cint),cv::Scalar(0,255,0),1);
-
 cv::namedWindow("I");
 cv::imshow("I",I);
 cv::namedWindow("D");
 cv::imshow("D",D);
+//
+// fin de la region
+//
 
 
 return dim;
@@ -1561,7 +1551,7 @@ std::vector<int> MainWindow::Home_Limit(cv::Mat img,int thr)
 
 
 
-        cv::drawContours(img, salida, -1, cv::Scalar(0,0,255), 1);
+        cv::drawContours(img, salida, -1, cv::Scalar(0,0,255), 1);// esto no es parte del algoritmo
 
     return lim;
     }
@@ -1599,10 +1589,11 @@ void MainWindow::on_pushButton_46_clicked()
          return;
      }
 
-    Limpiar(image);
+     cv::Mat im=image.clone();
+    Limpiar(im);
 
     cv::namedWindow("Resultado");
-    cv::imshow("Resultado",image);
+    cv::imshow("Resultado",im);
 
  }
 
@@ -1666,15 +1657,15 @@ void MainWindow::on_pushButton_47_clicked()
 {
     QMessageBox msg;
     if(image.empty()){
-        msg.setText("Necesitas Cargar una Imagen")    ;
+        msg.setText("Necesitas Cargar una Imagen");
         msg.exec();
         return;
     }
 
-
-   findForeground(image);
+ cv::Mat im=image.clone();
+   findForeground(im);
     cv::namedWindow("Resultado");
-    cv::imshow("Resultado",image);
+    cv::imshow("Resultado",im);
 }
 
 void MainWindow::findForeground(cv::Mat img)
@@ -1836,11 +1827,11 @@ void MainWindow::on_pushButton_48_clicked()
         msg.exec();
         return;
     }
+  cv::Mat im=image.clone();
 
-
-   home_Limpiar(image);
+   home_Limpiar(im);
     cv::namedWindow("Resultado");
-    cv::imshow("Resultado",image);
+    cv::imshow("Resultado",im);
 }
 
 int MainWindow::ApHome(cv::Mat img)
@@ -1920,9 +1911,9 @@ void MainWindow::on_pushButton_49_clicked()
         return;
     }
 
-
-   int pos= ApHome(image);
-   cv::Mat imageRIO= image(cv::Rect(image.cols/3,pos,image.cols/3,30));
+ cv::Mat im=image.clone();
+   int pos= ApHome(im);
+   cv::Mat imageRIO= im(cv::Rect(im.cols/3,pos,im.cols/3,30));
     cv::namedWindow("Resultado");
     cv::imshow("Resultado",imageRIO);
 }
